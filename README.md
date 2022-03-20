@@ -10,7 +10,7 @@ In order to use this, you need to:
 3. Add yourself (the user whose calendar you wish to access) as a test user
 (or make the project public and go through the process of verifying it -
 I haven't done that so I don't know what that entails).
-4. Follow the instructions on the above link under "OAuth client ID credentials" (make sure to select "Desktop app" tab in there) to create and download the
+4. Follow the instructions on the above link under "OAuth client ID credentials" (make sure to select the "Desktop app" tab in there) to create and download the
 "credentials.json" file this program needs.
 5. Run the program. The first time you do, a browser window should open asking you to give the program access to your calendar. After that your user token will be saved in a file so you will no longer need to go through that process.
 
@@ -28,5 +28,6 @@ you should change it to:
 ```py
 os.system(f"open \"{url}\"")
 ```
+(Based on [this](https://superuser.com/questions/1563255/start-a-zoom-meeting-from-the-command-line).)
 
 Might be a good idea to add automatic detection of the OS. Haven't done that.
