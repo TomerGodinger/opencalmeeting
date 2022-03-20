@@ -2,6 +2,23 @@
 # A small utility for opening the Zoom meeting on your current- or
 # next-scheduled calendar event.
 # 
+# Based on example code from Google taken from here:
+# https://developers.google.com/calendar/api/quickstart/python
+# 
+# In order to use this, you need to set up a project with OAuth credentials
+# for a desktop app as described here:
+# https://developers.google.com/workspace/guides/create-credentials
+# You'll also need to enable the Google Calendar API for it.
+# Add yourself (the user whose calendar you wish to access) as a test user
+# (or make the project public and go through the process of verifying it -
+# I haven't done that so I don't know what that entails) and follow the
+# instructions on the above link under "OAuth client ID credentials" (make
+# sure to select "Desktop app" tab in there) to create and download the
+# "credentials.json" file this program needs, then run the program. The
+# first time you do, a browser window should open asking you to give the
+# program access to your calendar. After that your user token will be saved
+# in a file so you will no longer need to go through that process.
+# 
 # NOTE: Written for Linux (Ubuntu), but in order to support other operating
 # systems you only need to replace the contents of the os.system() calls in
 # the open_link(), show_error() and show_notification() functions to the
@@ -19,18 +36,29 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
+
 # If modifying these scopes, delete the file token.json.
 SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
 
 
+
 def open_link(url):
+    """Opens a URL via a system command. Very OS-specific."""
+    
     os.system(f"xdg-open \"{url}\"")
 
+
 def show_error(msg):
+    """Shows an error message box via a system command. Very OS-specific."""
+
     os.system(f"zenity --error --no-wrap --title \"Open Calendar Meeting\" --text \"{msg}\"")
 
+
 def show_notification(msg):
+    """Shows a pop-up notification via a system command. Very OS-specific."""
+
     os.system(f'notify-send --hint int:transient:1 "Open Calendar Meeting" "{msg}"')
+
 
 def main(index):
     """Shows basic usage of the Google Calendar API.
@@ -68,19 +96,30 @@ def main(index):
         if not events or len(events) == 0:
             show_error('No events found.')
             return
-        # https://www.google.com/url?q=https://redis.zoom.us/j/98489572581?pwd%3DTDBXVjZldFBoeTlYTGh3cXZ2R3VEZz09&sa=D&source=calendar&ust=1648195824226050&usg=AOvVaw00JYwDLdRC-6oMJNMDS9HX
+        
+        # Attempt to extract the meeting link from the desired event
         meeting_link = None
         event = events[index]
         event_text = str(event)
-        p = re.compile(r"'https://[^\.]*\.zoom\.us/j/(\d+)\?pwd(=|%3D)([0-9a-zA-Z]+)'")
+        p = re.compile(r"'https://([^\.]*\.zoom\.us)/j/(\d+)\?pwd(=|%3D)([0-9a-zA-Z]+)'")
         result = p.search(event_text)
         if result:
-            confno = result.group(1)
-            password = result.group(3)
-            meeting_link = f"zoommtg://redislabs.zoom.us/join?confno={confno}&pwd={password}&action=join"
+            # If successful, extract the meeting URL, identifier and password 
+            baseurl = result.group(1)
+            confno = result.group(2)
+            password = result.group(4)
+
+            # Create the full link for opening the Zoom meeting
+            meeting_link = f"zoommtg://{baseurl}/join?confno={confno}&pwd={password}&action=join"
+
+            # Specify which event we're opening (if there's an issue and a
+            # different event is found, we want the user to see that something
+            # is wrong, rather than wait in the wrong meeting room) and open it
             show_notification(f"Opening meeting: {event['summary']}")
-            # open_link(meeting_link)
+            open_link(meeting_link)
         else:
+            # We found events, but they didn't have a Zoom meeting link in a
+            # format we know
             show_error('No event found with meeting link.')
 
     except HttpError as error:
@@ -90,6 +129,8 @@ def main(index):
 if __name__ == '__main__':
     index = 0
     if len(sys.argv) > 1:
+        # Added some minimal value enforcement here but it's not meant to
+        # cover every wrong argument value, so please use this properly
         try:
             index = max(0, int(sys.argv[1]))
         except:
