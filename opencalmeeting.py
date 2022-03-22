@@ -42,25 +42,25 @@ SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
 
 
 
-def open_link(url):
+def open_link(url: str):
     """Opens a URL via a system command. Very OS-specific."""
     
     os.system(f"xdg-open \"{url}\"")
 
 
-def show_error(msg):
+def show_error(msg: str):
     """Shows an error message box via a system command. Very OS-specific."""
 
     os.system(f"zenity --error --no-wrap --title \"Open Calendar Meeting\" --text \"{msg}\"")
 
 
-def show_notification(msg):
+def show_notification(msg: str):
     """Shows a pop-up notification via a system command. Very OS-specific."""
 
     os.system(f'notify-send --hint int:transient:1 "Open Calendar Meeting" "{msg}"')
 
 
-def main(index):
+def main(index: int):
     """Shows basic usage of the Google Calendar API.
     Prints the start and name of the next 10 events on the user's calendar.
     """
@@ -98,19 +98,21 @@ def main(index):
             return
         
         # Attempt to extract the meeting link from the desired event
-        meeting_link = None
+        meeting_link = None  # type: str
         event = events[index]
         event_text = str(event)
-        p = re.compile(r"'https://([^\.]*\.zoom\.us)/j/(\d+)\?pwd(=|%3D)([0-9a-zA-Z]+)'")
+        p = re.compile(r"https://(?P<url>[^\.]*\.zoom\.us)/j/(?P<confno>\d+)(?:\?pwd(?:=|%3D)(?P<password>[0-9a-zA-Z]+))?")
         result = p.search(event_text)
         if result:
             # If successful, extract the meeting URL, identifier and password 
-            baseurl = result.group(1)
-            confno = result.group(2)
-            password = result.group(4)
-
+            baseurl = result.group('url')
+            confno = result.group('confno')
+            password = result.group('password')
+            
             # Create the full link for opening the Zoom meeting
-            meeting_link = f"zoommtg://{baseurl}/join?confno={confno}&pwd={password}&action=join"
+            meeting_link = f"zoommtg://{baseurl}/join?confno={confno}&action=join"
+            if password:
+                meeting_link += f"&pwd={password}"
 
             # Specify which event we're opening (if there's an issue and a
             # different event is found, we want the user to see that something
