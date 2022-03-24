@@ -35,6 +35,7 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from google.auth.exceptions import RefreshError
 
 
 # If modifying these scopes, delete the file token.json.
@@ -72,9 +73,21 @@ def main(index: int):
         creds = Credentials.from_authorized_user_file('token.json', SCOPES)
     # If there are no (valid) credentials available, let the user log in.
     if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
+        creds_valid = False
+        try:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+                creds_valid = True
+        except RefreshError:
+            # This also means the credentials have expired
+            pass
+        except Exception as ex:
+            # This means... something else?
+            # Debug time!
+            show_error(str(ex))
+            return
+        
+        if not creds_valid:
             flow = InstalledAppFlow.from_client_secrets_file(
                 'credentials.json', SCOPES)
             creds = flow.run_local_server(port=0)
