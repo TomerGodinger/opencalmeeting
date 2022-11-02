@@ -29,6 +29,7 @@ import os.path
 import re
 import os
 import sys
+from typing import Any, Dict, List
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -41,6 +42,13 @@ from google.auth.exceptions import RefreshError
 # If modifying these scopes, delete the file token.json.
 SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
 
+BATCH_SIZE = 5
+"""Amount of calendar entries to get at a time while searching for an entry with a Zoom link."""
+
+SEARCH_LIMIT = 20
+"""Amount of calendar entries to get at a time while searching for an entry with a Zoom link."""
+
+REGEX_PATTERN = re.compile(r"https://(?P<url>[^\.]*\.zoom\.us)/j/(?P<confno>\d+)(?:\?pwd(?:=|%3D)(?P<password>[0-9a-zA-Z]+))?")
 
 
 def open_link(url: str):
@@ -61,8 +69,37 @@ def show_notification(msg: str):
     os.system(f'notify-send --hint int:transient:1 "Open Calendar Meeting" "{msg}"')
 
 
+def get_valid_meetings(events: List[Any]) -> List[Dict[str, str]]:
+    """
+    Extracts meetings with a valid Zoom link from a list of Google Calendar search results.
+    """
+    results: List[Dict[str, str]] = []
+    for event in events:
+        event_text = str(event)
+        result = REGEX_PATTERN.search(event_text)
+        # Attempt to extract the meeting link from the desired event
+        if result:
+            # If successful, extract the meeting URL, identifier and password 
+            baseurl = result.group('url')
+            confno = result.group('confno')
+            password = result.group('password')
+            
+            # Create the full link for opening the Zoom meeting
+            meeting_link = f"zoommtg://{baseurl}/join?confno={confno}&action=join"
+            if password:
+                meeting_link += f"&pwd={password}"
+
+            results.append({
+                'summary': event['summary'],
+                'meeting_link': meeting_link,
+            })
+    
+    return results
+
+
 def main(index: int):
-    """Shows basic usage of the Google Calendar API.
+    """
+    Shows basic usage of the Google Calendar API.
     Prints the start and name of the next 10 events on the user's calendar.
     """
     creds = None
@@ -101,41 +138,36 @@ def main(index: int):
         # Call the Calendar API
         now = datetime.datetime.utcnow().isoformat() + 'Z'  # 'Z' indicates UTC time
         
-        events_result = service.events().list(calendarId='primary', timeMin=now,
-                                              maxResults=index + 1, singleEvents=True,
-                                              orderBy='startTime').execute()
-        events = events_result.get('items', [])
-
-        if not events or len(events) == 0:
-            show_error('No events found.')
-            return
-        
-        # Attempt to extract the meeting link from the desired event
-        meeting_link = None  # type: str
-        event = events[index]
-        event_text = str(event)
-        p = re.compile(r"https://(?P<url>[^\.]*\.zoom\.us)/j/(?P<confno>\d+)(?:\?pwd(?:=|%3D)(?P<password>[0-9a-zA-Z]+))?")
-        result = p.search(event_text)
-        if result:
-            # If successful, extract the meeting URL, identifier and password 
-            baseurl = result.group('url')
-            confno = result.group('confno')
-            password = result.group('password')
+        entries_left = SEARCH_LIMIT
+        entries: List[Dict[str, str]] = []
+        while entries_left > 0:
+            search_size = min(entries_left, BATCH_SIZE)
+            events_result = service.events().list(calendarId='primary', timeMin=now,
+                                                maxResults=search_size, singleEvents=True,
+                                                orderBy='startTime').execute()
             
-            # Create the full link for opening the Zoom meeting
-            meeting_link = f"zoommtg://{baseurl}/join?confno={confno}&action=join"
-            if password:
-                meeting_link += f"&pwd={password}"
+            events = events_result.get('items', [])
 
-            # Specify which event we're opening (if there's an issue and a
-            # different event is found, we want the user to see that something
-            # is wrong, rather than wait in the wrong meeting room) and open it
-            show_notification(f"Opening meeting: {event['summary']}")
-            open_link(meeting_link)
-        else:
-            # We found events, but they didn't have a Zoom meeting link in a
-            # format we know
-            show_error('No event found with meeting link.')
+            if not events or len(events) == 0:
+                show_error('Not enough suitable events found.')
+                return
+            
+            entries.extend(get_valid_meetings(events=events))
+
+            if len(entries) >= index + 1:
+                selected_event = entries[index]
+                # Specify which event we're opening (if there's an issue and a
+                # different event is found, we want the user to see that something
+                # is wrong, rather than wait in the wrong meeting room) and open it
+                show_notification(f"Opening meeting: {selected_event['summary']}")
+                open_link(selected_event['meeting_link'])
+                return
+
+            entries_left -= search_size
+
+        # We found events, but they didn't have a Zoom meeting link in a
+        # format we know
+        show_error('No event found with meeting link.')
 
     except HttpError as error:
         print('An error occurred: %s' % error)
